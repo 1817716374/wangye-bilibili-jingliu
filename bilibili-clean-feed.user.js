@@ -7,6 +7,10 @@
 // @description:zh-CN  过滤哔哩哔哩首页广告、推流卡片、视频页右侧广告和游戏活动推广。
 // @author       千林
 // @license      MIT
+// @homepageURL  https://github.com/1817716374/网页端哔哩哔哩净流
+// @supportURL   https://github.com/1817716374/网页端哔哩哔哩净流/issues
+// @downloadURL  https://github.com/1817716374/网页端哔哩哔哩净流/raw/main/bilibili-clean-feed.user.js
+// @updateURL    https://github.com/1817716374/网页端哔哩哔哩净流/raw/main/bilibili-clean-feed.user.js
 // @compatible   chrome
 // @compatible   edge
 // @contact      QQ 1817716374
