@@ -18,12 +18,7 @@
 
 ### 方式一：通过 Raw 链接安装
 
-1. 浏览器安装并启用 Tampermonkey / 篡改猴。
-2. 打开安装链接：<https://github.com/1817716374/网页端哔哩哔哩净流/raw/main/bilibili-clean-feed.user.js>
-3. 篡改猴会自动弹出安装页面。
-4. 点击安装，然后刷新哔哩哔哩页面。
-
-如果浏览器没有自动弹出安装页，可以打开仓库中的 `bilibili-clean-feed.user.js` 文件，再点击 GitHub 页面右上方的 `Raw`。
+没做
 
 ### 方式二：手动新建脚本
 
