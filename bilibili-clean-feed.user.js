@@ -2,7 +2,7 @@
 // @name         Bilibili Clean Feed
 // @name:zh-CN   哔哩哔哩净流
 // @namespace    https://local.codex/bilibili-clean-feed
-// @version      0.4.3
+// @version      0.4.4
 // @description  Remove Bilibili homepage ad/rocket cards, refill the feed, and hide video-page side ads.
 // @description:zh-CN  过滤哔哩哔哩首页广告、推流卡片、视频页右侧广告和游戏活动推广。
 // @author       千林
@@ -150,7 +150,6 @@
             promotionSignals.creative ||
             business && (
               business.is_ad === true ||
-              business.is_ad_loc === true ||
               Number(business.cm_mark) === 1 ||
               Number(mark && mark.type) === 4 ||
               hasPromotedCreativeSignature([
