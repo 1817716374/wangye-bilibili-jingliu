@@ -2,7 +2,7 @@
 // @name         Bilibili Clean Feed
 // @name:zh-CN   哔哩哔哩净流
 // @namespace    https://local.codex/bilibili-clean-feed
-// @version      0.4.2
+// @version      0.4.3
 // @description  Remove Bilibili homepage ad/rocket cards, refill the feed, and hide video-page side ads.
 // @description:zh-CN  过滤哔哩哔哩首页广告、推流卡片、视频页右侧广告和游戏活动推广。
 // @author       千林
@@ -53,8 +53,10 @@
 
     const seenReturnedItems = new Set();
     const installedAt = Date.now();
-    const adSignaturePattern =
-      /cm\.bilibili\.com|ad_card|ad_logo|cm_mark|creative_id|linked_creative_id|trackid=web_pegasus|track_id=pbaes|source_id=5614|right_bottom\.adfloor|web-video-ad-cover|web-video-right-bottom-ad|web-video-activity-cover|sycp_brand|\/bfs\/sycp\//i;
+    const hardAdSignaturePattern =
+      /cm\.bilibili\.com|ad_card|ad_logo|cm_mark|right_bottom\.adfloor|web-video-ad-cover|web-video-right-bottom-ad|web-video-activity-cover|sycp_brand|\/bfs\/sycp\//i;
+    const promotedCreativeParamPattern = /[?&](?:creative_id|linked_creative_id)=([^&#]+)/i;
+    const promotedContextPattern = /[?&](?:trackid=web_pegasus|track_id=pbaes|source_id=|request_id=)/i;
 
     function log(...args) {
       if (CONFIG.debug) console.info('[哔哩哔哩净流]', ...args);
@@ -79,18 +81,50 @@
       return Boolean(url && url.hostname.endsWith('bilibili.com') && url.pathname === CONFIG.feedApiPath);
     }
 
-    function hasAdSignature(value) {
-      if (!value) return false;
+    function isMeaningfulPromotionValue(value) {
+      return value !== undefined && value !== null && value !== '' && value !== 0 && value !== '0';
+    }
+
+    function readPromotionSignals(value, depth = 0, signals = { hardAd: false, creative: false, context: false }) {
+      if (!value) return signals;
 
       if (typeof value === 'string') {
-        return adSignaturePattern.test(value);
+        if (hardAdSignaturePattern.test(value)) signals.hardAd = true;
+        if (promotedCreativeParamPattern.test(value)) signals.creative = true;
+        if (promotedContextPattern.test(value)) signals.context = true;
+        return signals;
       }
 
-      try {
-        return adSignaturePattern.test(JSON.stringify(value));
-      } catch (_) {
-        return false;
-      }
+      if (typeof value !== 'object' || depth > 6) return signals;
+
+      Object.keys(value).forEach((key) => {
+        const child = value[key];
+        const normalizedKey = String(key).toLowerCase();
+
+        if ((normalizedKey === 'creative_id' || normalizedKey === 'linked_creative_id') && isMeaningfulPromotionValue(child)) {
+          signals.creative = true;
+        }
+
+        if (typeof child === 'string' || typeof child === 'number') {
+          const text = String(child);
+          if (hardAdSignaturePattern.test(text)) signals.hardAd = true;
+          if (promotedCreativeParamPattern.test(text)) signals.creative = true;
+          if (promotedContextPattern.test(text)) signals.context = true;
+        } else {
+          readPromotionSignals(child, depth + 1, signals);
+        }
+      });
+
+      return signals;
+    }
+
+    function hasHardAdSignature(value) {
+      return readPromotionSignals(value).hardAd;
+    }
+
+    function hasPromotedCreativeSignature(value) {
+      const signals = readPromotionSignals(value);
+      return signals.creative || (signals.hardAd && signals.context);
     }
 
     function itemKey(item) {
@@ -105,19 +139,21 @@
     function isBlockedFeedItem(item) {
       const business = item && item.business_info;
       const mark = business && business.business_mark;
+      const promotionSignals = readPromotionSignals(item);
 
       return Boolean(
         item &&
           (
             item.goto === 'ad' ||
             item.card_goto === 'ad' ||
-            hasAdSignature(item) ||
+            promotionSignals.hardAd ||
+            promotionSignals.creative ||
             business && (
               business.is_ad === true ||
               business.is_ad_loc === true ||
               Number(business.cm_mark) === 1 ||
               Number(mark && mark.type) === 4 ||
-              hasAdSignature([
+              hasPromotedCreativeSignature([
                 business.url,
                 business.show_url,
                 business.click_url,
@@ -237,7 +273,7 @@
       if (!card || card.dataset.bcfRemoved === '1') return false;
 
       const html = card.outerHTML || '';
-      if (adSignaturePattern.test(html)) return true;
+      if (hasHardAdSignature(html)) return true;
       if (card.querySelector('a[href*="cm.bilibili.com"]')) return true;
 
       const hasRocketBoostIcon = card.querySelector('svg.vui_icon.bili-video-card__stats--icon');
@@ -245,14 +281,11 @@
         [
           'a[href*="ad_card"]',
           'a[href*="ad_logo"]',
-          'a[href*="creative_id"]',
-          'a[href*="linked_creative_id"]',
-          'a[href*="trackid=web_pegasus"]',
-          'a[href*="track_id=pbaes"]',
-          'a[href*="source_id=5614"]',
+          'a[href*="creative_id="]',
+          'a[href*="linked_creative_id="]',
         ].join(','),
       );
-      return Boolean(hasAdLikeLink || (hasRocketBoostIcon && hasAdSignature(html)));
+      return Boolean(hasAdLikeLink || (hasRocketBoostIcon && hasPromotedCreativeSignature(html)));
     }
 
     function removeHomeDomAds() {
@@ -291,7 +324,7 @@
       if (knownContainer) return knownContainer;
 
       const adReport = node.closest('.ad-report');
-      if (adReport && !adSignaturePattern.test(adReport.outerHTML || '')) {
+      if (adReport && !hasHardAdSignature(adReport.outerHTML || '')) {
         return null;
       }
 
