@@ -2,7 +2,7 @@
 // @name         Bilibili Clean Feed
 // @name:zh-CN   哔哩哔哩净流
 // @namespace    https://local.codex/bilibili-clean-feed
-// @version      0.4.1
+// @version      0.4.2
 // @description  Remove Bilibili homepage ad/rocket cards, refill the feed, and hide video-page side ads.
 // @description:zh-CN  过滤哔哩哔哩首页广告、推流卡片、视频页右侧广告和游戏活动推广。
 // @author       千林
@@ -57,7 +57,7 @@
       /cm\.bilibili\.com|ad_card|ad_logo|cm_mark|creative_id|linked_creative_id|trackid=web_pegasus|track_id=pbaes|source_id=5614|right_bottom\.adfloor|web-video-ad-cover|web-video-right-bottom-ad|web-video-activity-cover|sycp_brand|\/bfs\/sycp\//i;
 
     function log(...args) {
-      if (CONFIG.debug) console.info('[Bilibili Clean Feed]', ...args);
+      if (CONFIG.debug) console.info('[哔哩哔哩净流]', ...args);
     }
 
     function toUrl(value) {
@@ -206,11 +206,11 @@
         }
 
         const result = cleanFeedPayload(payload, requestedSize);
-        log('feed cleaned', {
-          requestedSize,
-          fetchSize,
-          removed: result.removed,
-          returned: result.returned,
+        log('首页推荐流已过滤', {
+          请求数量: requestedSize,
+          拉取数量: fetchSize,
+          移除数量: result.removed,
+          返回数量: result.returned,
         });
 
         const headers = new Headers(response.headers);
@@ -270,7 +270,7 @@
         if (markAndRemove(card)) removed += 1;
       });
 
-      if (removed) log('home dom cards removed', removed);
+      if (removed) log('首页卡片已移除', removed);
     }
 
     function getVideoAdContainer(node) {
@@ -347,7 +347,7 @@
         if (markAndRemove(container)) removed += 1;
       });
 
-      if (removed) log('video ads removed', removed);
+      if (removed) log('视频页广告已移除', removed);
     }
 
     function removeDomAds() {

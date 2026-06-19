@@ -2,9 +2,6 @@
 
 一个用于网页端哔哩哔哩的 Tampermonkey / 篡改猴用户脚本。
 
-作者：千林  
-联系方式：QQ 1817716374
-
 ## 脚本作用
 
 - 过滤哔哩哔哩首页推荐流中的广告卡片。
@@ -16,7 +13,15 @@
 
 ## 安装方式
 
-### 方式一：通过 Raw 链接安装
+### 方式一：通过 Greasy Fork 安装（推荐）
+
+1. 浏览器安装并启用 Tampermonkey / 篡改猴。
+2. 打开 Greasy Fork 发布页：<https://greasyfork.org/zh-CN/scripts/583405-bilibili-clean-feed/code>
+3. 点击页面中的安装按钮。
+4. 篡改猴会自动弹出安装页面。
+5. 点击安装，然后刷新哔哩哔哩页面。
+
+### 方式二：通过 GitHub Raw 链接安装
 
 1. 浏览器安装并启用 Tampermonkey / 篡改猴。
 2. 打开安装链接：<https://github.com/1817716374/wangye-bilibili-jingliu/raw/main/bilibili-clean-feed.user.js>
@@ -25,7 +30,7 @@
 
 如果浏览器没有自动弹出安装页，可以打开仓库中的 `bilibili-clean-feed.user.js` 文件，再点击 GitHub 页面右上方的 `Raw`。
 
-### 方式二：手动新建脚本
+### 方式三：手动新建脚本
 
 1. 打开篡改猴管理面板。
 2. 点击“添加新脚本”。
