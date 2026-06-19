@@ -38,7 +38,7 @@
     };
 
     const PAGE = {
-      isHomePage: location.hostname === 'www.bilibili.com' && location.pathname === '/',
+      isHomePage: location.hostname === 'www.bilibili.com' && (location.pathname === '/' || location.pathname === '/index.html'),
       isVideoPage: location.hostname === 'www.bilibili.com' && /^\/video\//.test(location.pathname),
     };
 
