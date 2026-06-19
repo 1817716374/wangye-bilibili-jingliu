@@ -2,7 +2,7 @@
 // @name         Bilibili Clean Feed
 // @name:zh-CN   哔哩哔哩净流
 // @namespace    https://local.codex/bilibili-clean-feed
-// @version      0.4.0
+// @version      0.4.1
 // @description  Remove Bilibili homepage ad/rocket cards, refill the feed, and hide video-page side ads.
 // @description:zh-CN  过滤哔哩哔哩首页广告、推流卡片、视频页右侧广告和游戏活动推广。
 // @author       千林
@@ -54,7 +54,7 @@
     const seenReturnedItems = new Set();
     const installedAt = Date.now();
     const adSignaturePattern =
-      /cm\.bilibili\.com|ad_card|ad_logo|cm_mark|creative_id|linked_creative_id|right_bottom\.adfloor|web-video-ad-cover|web-video-right-bottom-ad|web-video-activity-cover|sycp_brand|\/bfs\/sycp\//i;
+      /cm\.bilibili\.com|ad_card|ad_logo|cm_mark|creative_id|linked_creative_id|trackid=web_pegasus|track_id=pbaes|source_id=5614|right_bottom\.adfloor|web-video-ad-cover|web-video-right-bottom-ad|web-video-activity-cover|sycp_brand|\/bfs\/sycp\//i;
 
     function log(...args) {
       if (CONFIG.debug) console.info('[Bilibili Clean Feed]', ...args);
@@ -79,6 +79,20 @@
       return Boolean(url && url.hostname.endsWith('bilibili.com') && url.pathname === CONFIG.feedApiPath);
     }
 
+    function hasAdSignature(value) {
+      if (!value) return false;
+
+      if (typeof value === 'string') {
+        return adSignaturePattern.test(value);
+      }
+
+      try {
+        return adSignaturePattern.test(JSON.stringify(value));
+      } catch (_) {
+        return false;
+      }
+    }
+
     function itemKey(item) {
       if (!item) return '';
       if (item.bvid) return `bvid:${item.bvid}`;
@@ -97,12 +111,13 @@
           (
             item.goto === 'ad' ||
             item.card_goto === 'ad' ||
+            hasAdSignature(item) ||
             business && (
               business.is_ad === true ||
               business.is_ad_loc === true ||
               Number(business.cm_mark) === 1 ||
               Number(mark && mark.type) === 4 ||
-              adSignaturePattern.test([
+              hasAdSignature([
                 business.url,
                 business.show_url,
                 business.click_url,
@@ -226,8 +241,18 @@
       if (card.querySelector('a[href*="cm.bilibili.com"]')) return true;
 
       const hasRocketBoostIcon = card.querySelector('svg.vui_icon.bili-video-card__stats--icon');
-      const hasAdLikeLink = card.querySelector('a[href*="ad_card"], a[href*="ad_logo"], a[href*="creative_id"]');
-      return Boolean(hasRocketBoostIcon && hasAdLikeLink);
+      const hasAdLikeLink = card.querySelector(
+        [
+          'a[href*="ad_card"]',
+          'a[href*="ad_logo"]',
+          'a[href*="creative_id"]',
+          'a[href*="linked_creative_id"]',
+          'a[href*="trackid=web_pegasus"]',
+          'a[href*="track_id=pbaes"]',
+          'a[href*="source_id=5614"]',
+        ].join(','),
+      );
+      return Boolean(hasAdLikeLink || (hasRocketBoostIcon && hasAdSignature(html)));
     }
 
     function removeHomeDomAds() {
