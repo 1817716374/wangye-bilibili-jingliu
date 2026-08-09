@@ -2,7 +2,7 @@
 // @name         Bilibili Clean Feed
 // @name:zh-CN   哔哩哔哩净流
 // @namespace    https://local.codex/bilibili-clean-feed
-// @version      0.5.0
+// @version      0.5.2
 // @description  Remove Bilibili homepage ad/rocket cards, refill the feed, and hide video-page side ads.
 // @description:zh-CN  过滤哔哩哔哩首页广告、推流卡片、视频页右侧广告和游戏活动推广。
 // @author       千林
@@ -33,9 +33,11 @@
       settingsKey: 'bilibili-clean-feed-settings',
       minFetchSize: 20,
       fetchPadding: 12,
-      maxFetchSize: 36,
+      maxFetchSize: 30,
       domCleanIntervalMs: 2500,
       videoAdMaxDelayMs: 8000,
+      homeInitialRefreshDelayMs: 120,
+      homeInitialRefreshTimeoutMs: 8000,
       commentWarmupDelayMs: 120,
     };
 
@@ -65,6 +67,16 @@
       /cm\.bilibili\.com|ad_card|ad_logo|cm_mark|right_bottom\.adfloor|web-video-ad-cover|web-video-right-bottom-ad|web-video-activity-cover|sycp_brand|\/bfs\/sycp\//i;
     const promotedCreativeParamPattern = /[?&](?:creative_id|linked_creative_id)=([^&#]+)/i;
     const promotedContextPattern = /[?&](?:trackid=web_pegasus|track_id=pbaes|source_id=|request_id=)/i;
+    const homeHardAdSignals = [
+      'a[href*="cm.bilibili.com"]',
+      'a[href*="ad_card"]',
+      'a[href*="ad_logo"]',
+      'img[src*="/bfs/sycp/"]',
+    ];
+    const homePromotedSignals = [
+      'a[href*="creative_id="]',
+      'a[href*="linked_creative_id="]',
+    ];
 
     function loadSettings() {
       try {
@@ -79,6 +91,8 @@
     }
 
     let settings = loadSettings();
+    let homeFeedResponseVersion = 0;
+    let homeInitialRefreshState = 'idle';
 
     function saveSettings(nextSettings) {
       settings = {
@@ -151,11 +165,6 @@
 
     function hasHardAdSignature(value) {
       return readPromotionSignals(value).hardAd;
-    }
-
-    function hasPromotedCreativeSignature(value) {
-      const signals = readPromotionSignals(value);
-      return signals.creative || (signals.hardAd && signals.context);
     }
 
     function itemKey(item) {
@@ -413,6 +422,7 @@
         }
 
         const result = cleanFeedPayload(payload, requestedSize);
+        homeFeedResponseVersion += 1;
         log('首页推荐流已过滤', {
           请求数量: requestedSize,
           拉取数量: fetchSize,
@@ -440,43 +450,87 @@
       return true;
     }
 
-    function isBlockedHomeDomCard(card) {
-      if (!card || card.dataset.bcfRemoved === '1') return false;
+    function syncHomeFilterClasses() {
+      if (!PAGE.isHomePage) return;
 
-      const html = card.outerHTML || '';
-      if (settings.blockBiliAds && hasHardAdSignature(html)) return true;
-      if (settings.blockBiliAds && card.querySelector('a[href*="cm.bilibili.com"]')) return true;
-
-      const hasRocketBoostIcon = card.querySelector('svg.vui_icon.bili-video-card__stats--icon');
-      const hasAdLikeLink = card.querySelector(
-        [
-          'a[href*="ad_card"]',
-          'a[href*="ad_logo"]',
-          'a[href*="creative_id="]',
-          'a[href*="linked_creative_id="]',
-        ].join(','),
+      // 首页卡片由 Vue 和图片懒加载器共同管理，外部删除节点会让封面与卡片数据错位。
+      document.documentElement.classList.toggle('bcf-block-bili-ads', settings.blockBiliAds);
+      document.documentElement.classList.toggle('bcf-block-promoted-videos', settings.blockPromotedVideos);
+      document.documentElement.classList.toggle(
+        'bcf-home-feed-pending',
+        homeInitialRefreshState !== 'done' && (settings.blockBiliAds || settings.blockPromotedVideos),
       );
-      return Boolean(settings.blockPromotedVideos && (hasAdLikeLink || (hasRocketBoostIcon && hasPromotedCreativeSignature(html))));
     }
 
-    function removeHomeDomAds() {
-      const cardSelector = '.bili-video-card, .feed-card, .floor-single-card';
-      let removed = 0;
+    function hasBlockedInitialHomeCard() {
+      const cards = document.querySelectorAll('.container.is-version8 > .feed-card');
+      return Array.from(cards).some((card) => Boolean(
+        settings.blockBiliAds && card.querySelector(homeHardAdSignals.join(',')) ||
+        settings.blockPromotedVideos && card.querySelector(homePromotedSignals.join(',')),
+      ));
+    }
 
-      document.querySelectorAll(cardSelector).forEach((card) => {
-        if (!isBlockedHomeDomCard(card)) return;
-        if (markAndRemove(card)) removed += 1;
-      });
+    function finishHomeInitialRefresh(reason) {
+      if (homeInitialRefreshState === 'done') return;
+      homeInitialRefreshState = 'done';
 
-      if (settings.blockBiliAds) {
-        document.querySelectorAll('a[href*="cm.bilibili.com"]').forEach((link) => {
-          const card = link.closest(cardSelector) || link.closest('.bili-video-card__wrap');
-          if (!card) return;
-          if (markAndRemove(card)) removed += 1;
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => syncHomeFilterClasses());
         });
+      }, 80);
+      log('首页首屏推荐已就绪', reason);
+    }
+
+    function refreshInitialHomeFeed() {
+      if (!PAGE.isHomePage || homeInitialRefreshState !== 'idle') return;
+      if (!settings.blockBiliAds && !settings.blockPromotedVideos) {
+        finishHomeInitialRefresh('过滤已关闭');
+        return;
       }
 
-      if (removed) log('首页卡片已移除', removed);
+      homeInitialRefreshState = 'waiting';
+      syncHomeFilterClasses();
+      const startedAt = Date.now();
+
+      const waitForFeed = () => {
+        if (Date.now() - startedAt >= CONFIG.homeInitialRefreshTimeoutMs) {
+          finishHomeInitialRefresh('等待首屏超时');
+          return;
+        }
+
+        const cards = document.querySelectorAll('.container.is-version8 > .feed-card');
+        const rollButton = document.querySelector('.feed-roll-btn .primary-btn.roll-btn, .feed-roll-btn .roll-btn');
+        if (!cards.length || !rollButton) {
+          setTimeout(waitForFeed, 60);
+          return;
+        }
+
+        if (!hasBlockedInitialHomeCard()) {
+          finishHomeInitialRefresh('首屏无需替换');
+          return;
+        }
+
+        homeInitialRefreshState = 'refreshing';
+        const responseVersionBeforeClick = homeFeedResponseVersion;
+        rollButton.click();
+
+        const waitForResponse = () => {
+          if (homeFeedResponseVersion > responseVersionBeforeClick && !hasBlockedInitialHomeCard()) {
+            finishHomeInitialRefresh('已执行原生换一换');
+            return;
+          }
+          if (Date.now() - startedAt >= CONFIG.homeInitialRefreshTimeoutMs) {
+            finishHomeInitialRefresh('原生换一换超时');
+            return;
+          }
+          setTimeout(waitForResponse, 60);
+        };
+
+        setTimeout(waitForResponse, 60);
+      };
+
+      setTimeout(waitForFeed, CONFIG.homeInitialRefreshDelayMs);
     }
 
     function getVideoAdContainer(node) {
@@ -557,25 +611,41 @@
     }
 
     function removeDomAds() {
-      if (PAGE.isHomePage) removeHomeDomAds();
+      if (PAGE.isHomePage) syncHomeFilterClasses();
       if (PAGE.isVideoPage) removeVideoPageAds();
     }
 
     function injectCss() {
-      if (!PAGE.isVideoPage || document.getElementById('bilibili-clean-feed-style')) return;
+      if (document.getElementById('bilibili-clean-feed-style')) return;
 
       const style = document.createElement('style');
       style.id = 'bilibili-clean-feed-style';
-      style.textContent = `${[
-        '.video-card-ad-small',
-        '#slide_ad',
-        '.activity-m-v1',
-        '.activity-m',
-        '.ad-report.strip-ad.left-banner',
-        '.ad-report.ad-floor-exp.right-bottom-banner',
-        '.video-page-game-card-small',
-        '.game-card-ad',
-      ].join(',')}{display:none!important;visibility:hidden!important;max-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}`;
+      const rules = [];
+
+      if (PAGE.isHomePage) {
+        const homeCardSelectors = ['.feed-card', '.bili-video-card', '.floor-single-card'];
+        const buildHomeSelectors = (rootClass, signals) => homeCardSelectors.flatMap((card) =>
+          signals.map((signal) => `html.${rootClass} ${card}:has(${signal})`));
+
+        rules.push(`${buildHomeSelectors('bcf-block-bili-ads', homeHardAdSignals).join(',')}{display:none!important;}`);
+        rules.push(`${buildHomeSelectors('bcf-block-promoted-videos', homePromotedSignals).join(',')}{display:none!important;}`);
+        rules.push('html.bcf-home-feed-pending .container.is-version8 > .feed-card{visibility:hidden!important;}');
+      }
+
+      if (PAGE.isVideoPage) {
+        rules.push(`${[
+          '.video-card-ad-small',
+          '#slide_ad',
+          '.activity-m-v1',
+          '.activity-m',
+          '.ad-report.strip-ad.left-banner',
+          '.ad-report.ad-floor-exp.right-bottom-banner',
+          '.video-page-game-card-small',
+          '.game-card-ad',
+        ].join(',')}{display:none!important;visibility:hidden!important;max-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}`);
+      }
+
+      style.textContent = rules.join('\n');
 
       (document.head || document.documentElement).appendChild(style);
     }
@@ -667,7 +737,9 @@
       };
 
       mountSettingsPanel();
+      syncHomeFilterClasses();
       injectCss();
+      refreshInitialHomeFeed();
       scheduleClean();
       new MutationObserver(scheduleClean).observe(document.documentElement, {
         childList: true,
